@@ -5,8 +5,8 @@
 ![Platform](https://img.shields.io/badge/Platform-Home_Assistant_|_Docker-41BDF5?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-v1.0_Development-orange?style=for-the-badge)
 
-> **⚠️ Adult Content Notice**
-> PlayRooms is a platform for intimate device control and is intended for adults only. By using this software, you confirm you are of legal age in your jurisdiction. See [Terms of Use](#terms-of-use) below.
+> **⚠️ Notice**
+> PlayRooms is a platform for intimate device control and is intended for adults only. By using this software, you confirm that you are of legal age in your jurisdiction. See [Terms of Use](#terms-of-use) below.
 
 ---
 
