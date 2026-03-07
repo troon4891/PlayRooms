@@ -3,7 +3,19 @@
 **Status:** Draft  
 **Date:** 2026-02-28  
 **Reference:** `ARCHITECTURE-v1.0.md`  
-**Preceding version:** [HAButtPlugIO-PlayRooms](https://github.com/troon4891/HAButtPlugIO-PlayRooms) (v3.3.0 — final 3.x release, archived).
+**Preceding version:** HAButtPlugIO-PlayRooms v3.3.0 (QA passed, ready for merge)
+
+---
+
+## Pre-Work: Close Out 3.x
+
+Before v1.0 work begins, finalize the 3.x series:
+
+- [ ] Verify beta branch matches what passed 3.3.0 QA (config.yaml shows 3.2.0 — may need push)
+- [ ] Merge beta → main for 3.3.0 release
+- [ ] Tag `v3.3.0` as the final release of the HAButtPlugIO-PlayRooms repo
+- [ ] Archive or mark HAButtPlugIO-PlayRooms as succeeded-by PlayRooms v1.0
+
 ---
 
 ## Milestone 1: Repository Scaffolding

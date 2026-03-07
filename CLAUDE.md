@@ -210,7 +210,7 @@ Example:
 Written for an AI with browser access, dev tools, console, and network tabs.
 Be specific and technical:
 
-- Navigation paths and sections to test
+- Exact URLs or navigation paths to test
 - DOM elements or selectors to verify
   (e.g., "check that [data-testid='panel-slider'] exists")
 - Console commands to run or console output to check for
