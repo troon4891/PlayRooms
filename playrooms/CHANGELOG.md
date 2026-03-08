@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.1] - 2026-03-08
 
+### Changed
+
+- **Health endpoint version sync** — `/api/health` now reads version from `server/package.json` instead of hardcoding it
+- Bumped `server/package.json` and `client/package.json` from 1.0.0 to 1.0.1 to match `config.yaml`
+- Added version bumping guide to `CLAUDE.md`
+
 ### Fixed
 
 - **HA addon repository structure** — Home Assistant Supervisor could not find the addon because `config.yaml` was at the repo root. HA only scans subdirectories. Moved all addon content (`config.yaml`, `build.yaml`, `Dockerfile`, `run.sh`, `server/`, `client/`, `translations/`, `DOCS.md`) into a `playrooms/` subdirectory.

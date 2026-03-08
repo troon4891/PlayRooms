@@ -236,6 +236,18 @@ After every implementation, review and update all affected documentation. These 
 
 For **provider repos** (not this repo, but for your reference): providers also maintain `SAFETY.md` (emergency stop behavior, physical safety) and `CONTROLS.md` (every panel control documented). Same rule applies — if the code changes safety behavior or control definitions, the docs update in the same commit.
 
+### Version Bumping
+
+When bumping the version, update these files:
+
+- `playrooms/config.yaml` — HA addon version (what HA displays to users)
+- `playrooms/server/package.json` — server version
+- `playrooms/client/package.json` — client version
+- `CHANGELOG.md` — root changelog
+- `playrooms/CHANGELOG.md` — HA addon changelog tab
+
+The `/api/health` endpoint reads version from `server/package.json` automatically — it does **not** need manual updating.
+
 ---
 
 ## After Every Implementation

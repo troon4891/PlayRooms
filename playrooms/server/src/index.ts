@@ -21,6 +21,11 @@ import { Server } from "socket.io";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { existsSync, readFileSync } from "fs";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const serverPackageJson = require("../../package.json");
+const SERVER_VERSION: string = serverPackageJson.version;
 
 import { runMigrations } from "./db/migrate.js";
 import { startEngine, stopEngine, restartEngine, isEngineRunning } from "./buttplug/engine.js";
@@ -408,7 +413,7 @@ app.get("/api/health", (_req, res) => {
     status: "ok",
     engine: isEngineRunning(),
     buttplug: isConnected(),
-    version: "1.0.0",
+    version: SERVER_VERSION,
     transports: config.transports,
     authMode: config.authMode,
   };
