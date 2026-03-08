@@ -1,0 +1,21 @@
+{
+  "appName": "PlayRooms",
+  "loading": "Loading...",
+  "settings": "Settings",
+  "cancel": "Cancel",
+  "create": "Create",
+  "save": "Save",
+  "delete": "Delete",
+  "close": "Close",
+  "confirm": "Confirm",
+  "back": "Back",
+  "connected": "Connected",
+  "disconnected": "Disconnected",
+  "connecting": "Connecting...",
+  "error": "Error",
+  "buttplugConnected": "Buttplug.io Connected",
+  "buttplugDisconnected": "Buttplug.io Disconnected",
+  "about": "About",
+  "aboutDescription": "PlayRooms v{{version}} — A Home Assistant add-on for device management with shareable Play Rooms.",
+  "version": "v{{version}}"
+}

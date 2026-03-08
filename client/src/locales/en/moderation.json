@@ -1,0 +1,10 @@
+{
+  "voiceAvailable": "Your voice is available again",
+  "controlsFrozen": "Your controls have been frozen",
+  "controlsUnfrozen": "Your controls are active again",
+  "kicked": "You have been removed from the room",
+  "muted": "You have been muted",
+  "unmuted": "You have been unmuted",
+  "systemMessage": "System",
+  "moderatorAction": "Moderator {{name}} {{action}}"
+}

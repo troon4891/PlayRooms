@@ -1,0 +1,47 @@
+name: "PlayRooms"
+version: "1.0.0"
+slug: "playrooms"
+description: "Host PlayRooms — intimate device control platform with rooms, guest access, and plugin-based device providers"
+url: "https://github.com/troon4891/PlayRooms"
+arch:
+  - amd64
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: "mdi:gamepad-variant"
+panel_title: "PlayRooms"
+ports:
+  8099/tcp: null
+map:
+  - addon_config:rw
+hassio_api: true
+auth_api: true
+host_dbus: true
+uart: true
+usb: true
+options:
+  accept_terms: false
+  intiface_port: 12345
+  server_port: 8099
+  scan_on_start: false
+  scan_timeout: 30000
+  device_stale_days: 90
+  log_level: "info"
+  use_bluetooth: false
+  use_serial: false
+  use_hid: false
+  portal_url: ""
+  portal_secret: ""
+schema:
+  accept_terms: bool
+  intiface_port: "int(1024,65535)"
+  server_port: "int(1024,65535)"
+  scan_on_start: bool
+  scan_timeout: "int(5000,120000)"
+  device_stale_days: "int(0,365)"
+  log_level: "list(debug|info|warn|error)?"
+  use_bluetooth: bool
+  use_serial: bool
+  use_hid: bool
+  portal_url: "str?"
+  portal_secret: "str?"

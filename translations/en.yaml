@@ -1,0 +1,54 @@
+configuration:
+  accept_terms:
+    name: Accept Terms of Use
+    description: >-
+      By setting this to true, you accept the PlayRooms Terms of Use and Liability
+      Disclaimer. PlayRooms controls physical devices that interact with the human body.
+      You accept full responsibility for safe use. The software is provided AS IS without
+      warranty. See the LICENSE file for the full Apache 2.0 license text.
+  intiface_port:
+    name: Intiface Engine Port
+    description: WebSocket port for the Intiface Engine server
+  server_port:
+    name: Server Port
+    description: HTTP port for the PlayRooms web server
+  scan_on_start:
+    name: Scan on Start
+    description: Automatically scan for Buttplug.io devices when the add-on starts
+  scan_timeout:
+    name: Scan Timeout
+    description: Auto-stop device scan after this many milliseconds (5000–120000)
+  device_stale_days:
+    name: Stale Device Removal
+    description: >-
+      Automatically remove denied devices not seen in this many days. Set to 0 to disable.
+  log_level:
+    name: Log Level
+    description: Server log verbosity level
+  use_bluetooth:
+    name: Bluetooth LE
+    description: >-
+      Enable Bluetooth Low Energy device scanning. Requires a Bluetooth adapter
+      on the host machine. The add-on must be restarted after changing this setting.
+  use_serial:
+    name: Serial Port
+    description: >-
+      Enable serial port device scanning (USB-to-serial adapters, Lovense serial
+      dongles). Requires serial devices connected to the host. The add-on must be
+      restarted after changing this setting.
+  use_hid:
+    name: USB HID
+    description: >-
+      Enable USB Human Interface Device scanning (Lovense HID dongles and other
+      USB HID devices). Requires USB devices connected to the host. The add-on
+      must be restarted after changing this setting.
+  portal_url:
+    name: Portal URL
+    description: >-
+      URL of a PlayRooms Portal server for remote guest access. Leave empty to
+      disable portal connectivity.
+  portal_secret:
+    name: Portal Secret
+    description: >-
+      Shared secret for authenticating with the Portal server. Must match the
+      Portal's configured secret.
