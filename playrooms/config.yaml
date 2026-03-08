@@ -1,5 +1,5 @@
 name: "PlayRooms"
-version: "1.0.0"
+version: "1.0.1"
 slug: "playrooms"
 description: "Host PlayRooms — intimate device control platform with rooms, guest access, and plugin-based device providers"
 url: "https://github.com/troon4891/PlayRooms"
