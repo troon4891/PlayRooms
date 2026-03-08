@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+data/
+.jwt-secret
+.portal-instance-id
+server/public/
+client/dist/
+client/tsconfig.tsbuildinfo

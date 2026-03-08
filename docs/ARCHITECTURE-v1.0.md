@@ -202,7 +202,7 @@ displayName: "DG-LAB Coyote (WebSocket)"
 version: "1.0.0"
 description: "Control DG-LAB Coyote devices via WebSocket through the DG-LAB mobile app"
 author: "PlayRooms Team"
-license: "MIT"
+license: "Apache-2.0"
 providerApiVersion: 1
 
 # What this provider needs from the host

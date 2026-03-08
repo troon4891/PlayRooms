@@ -1,0 +1,25 @@
+{
+  "disclaimer": {
+    "title": "Terms of Use & Liability Disclaimer",
+    "updated": "Terms updated — please review the changes below.",
+    "point1": "This software controls physical devices that interact with the human body.",
+    "point2": "Incorrect configuration, network failures, software bugs, or connection loss could result in unexpected device behavior.",
+    "point3": "You are solely responsible for safe use, including proper device selection, intensity limits, emergency stop accessibility, and physical safety precautions.",
+    "point4": "Electrical stimulation (e-stim) devices carry specific risks including cardiac events, burns, and muscle injury — you accept full responsibility for understanding these risks before enabling e-stim providers.",
+    "point5": "The developers, contributors, and maintainers accept no liability for injury, harm, damage, or any other consequence resulting from use of this software.",
+    "point6": "You must ensure all participants provide informed consent before participating in any room session.",
+    "point7": "The software is provided \"AS IS\" without warranty of any kind, express or implied, including but not limited to fitness for a particular purpose.",
+    "point8": "You are responsible for compliance with all applicable laws in your jurisdiction.",
+    "point9": "This platform is intended for use by adults of legal age in your jurisdiction.",
+    "checkbox": "I have read and accept these terms",
+    "accept": "Accept & Continue",
+    "mustScroll": "Please scroll to the bottom and read all terms before accepting."
+  },
+  "guestLobby": {
+    "title": "Before You Join",
+    "body": "This room includes intimate device control. You must be of legal age in your jurisdiction to participate.",
+    "detail": "By joining, you acknowledge that connected devices may respond to commands from you and other participants. The room host is responsible for device configuration and safety settings.",
+    "leave": "If you are uncomfortable at any time, you can leave the room immediately.",
+    "accept": "I understand, join the room"
+  }
+}

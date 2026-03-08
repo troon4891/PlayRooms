@@ -18,14 +18,39 @@ limitations under the License.
 
 ## Third-Party Dependencies
 
-### Runtime Dependencies
+### Server Runtime Dependencies
 
-*To be populated as dependencies are added to the project.*
+| Package | License | Description |
+|---------|---------|-------------|
+| Express | MIT | Web framework for Node.js |
+| Socket.IO | MIT | Real-time bidirectional communication |
+| better-sqlite3 | MIT | SQLite3 bindings for Node.js |
+| Drizzle ORM | Apache-2.0 | TypeScript ORM |
+| buttplug | BSD-3-Clause | Buttplug.io client library |
+| cors | MIT | CORS middleware for Express |
+| nanoid | MIT | URL-safe unique ID generator |
+| uuid | MIT | UUID generation |
+| socket.io-client | MIT | Socket.IO client (for Portal relay) |
+
+### Frontend Runtime Dependencies
+
+| Package | License | Description |
+|---------|---------|-------------|
+| React | MIT | UI framework |
+| React DOM | MIT | React DOM renderer |
+| React Router DOM | MIT | Client-side routing |
+| Socket.IO Client | MIT | Real-time communication client |
+| Lucide React | ISC | Icon library |
+| i18next | MIT | Internationalization framework |
+| react-i18next | MIT | React bindings for i18next |
+| i18next-http-backend | MIT | i18next HTTP backend plugin |
 
 ### Development Dependencies
 
-*To be populated as dependencies are added to the project.*
-
-### Frontend Dependencies
-
-*To be populated as dependencies are added to the project.*
+| Package | License | Description |
+|---------|---------|-------------|
+| TypeScript | Apache-2.0 | Type-safe JavaScript |
+| Vite | MIT | Build tool |
+| Tailwind CSS | MIT | Utility-first CSS framework |
+| drizzle-kit | MIT | Drizzle ORM toolkit |
+| tsx | MIT | TypeScript executor for Node.js |
