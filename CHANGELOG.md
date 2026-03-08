@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **HA addon repository structure** — Home Assistant Supervisor could not find the addon because `config.yaml` was at the repo root. HA only scans subdirectories. Moved all addon content (`config.yaml`, `build.yaml`, `Dockerfile`, `run.sh`, `server/`, `client/`, `translations/`, `DOCS.md`) into a `playrooms/` subdirectory.
+- Added `repository.yaml` at root for HA addon repository discovery
+
+### Added
+
+- **Platform setup guides** — ported from HAButtPlugIO-PlayRooms for Home Assistant Supervisor, VirtualBox, and Proxmox VE (`docs/setup-guides/`)
+- **DOCS.md expanded** — now includes transport requirements, hardware passthrough guide for standalone Docker, tested platforms matrix, and links to setup guides
+- **CLAUDE.md updated** — added Home Assistant Addon Structure section and Git Workflow section; updated directory layout to reflect new structure
+- `qa/` directory for QA checklists
+
 ## [1.0.0] - 2026-03-08
 
 ### Added
