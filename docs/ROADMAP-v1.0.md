@@ -25,7 +25,7 @@ Before v1.0 work begins, finalize the 3.x series:
 ### Tasks
 
 **1.1 — Create `PlayRooms` Host repository**
-- Initialize repo with MIT license, README, CONTRIBUTING, SECURITY, NOTICE, CLAUDE.md
+- Initialize repo with Apache 2.0 license, README, CONTRIBUTING, SECURITY, NOTICE, CLAUDE.md
 - Port the following from HAButtPlugIO-PlayRooms verbatim (no refactoring yet):
   - `server/src/` (everything except `buttplug/` directory and portal server mode)
   - `client/src/`
@@ -40,7 +40,7 @@ Before v1.0 work begins, finalize the 3.x series:
 - The `server/src/buttplug/` directory stays temporarily as a shim so the app still works during transition
 
 **1.2 — Create `PlayRooms-Portal` repository**
-- Initialize repo with MIT license, README, CLAUDE.md
+- Initialize repo with Apache 2.0 license, README, CLAUDE.md
 - Extract portal server code from HAButtPlugIO-PlayRooms (the `PORTAL_MODE=true` path)
 - Copy `src/shared/relay-types.ts` from Host repo (clearly marked as a copy)
 - Own Dockerfile — lightweight Node image, no Intiface Engine, no SQLite
@@ -49,14 +49,14 @@ Before v1.0 work begins, finalize the 3.x series:
 - Protocol version handshake validation on relay connection
 
 **1.3 — Create `PlayRooms-DP-Buttplug` repository**
-- Initialize repo with MIT license, README stub, CLAUDE.md
+- Initialize repo with Apache 2.0 license, README stub, CLAUDE.md
 - Create the required provider file structure: `manifest.yaml`, `README.md`, `SAFETY.md`, `CONTROLS.md`, `src/index.ts`
 - Copy `server/src/buttplug/` contents into `src/`
 - Write initial `manifest.yaml` with current Buttplug config options
 - Provider does NOT need to implement the full ProviderInterface yet — this milestone is about structure
 
 **1.4 — Create `PlayRooms-DP-DGLabs-WS` repository**
-- Initialize repo with MIT license, CLAUDE.md
+- Initialize repo with Apache 2.0 license, CLAUDE.md
 - Create the required file structure with placeholder content
 - Write `manifest.yaml` based on DG-LAB WebSocket protocol requirements
 - Write initial `SAFETY.md` covering e-stim safety considerations
