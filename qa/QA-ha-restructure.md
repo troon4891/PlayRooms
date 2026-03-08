@@ -1,0 +1,165 @@
+# QA Checklist — HA Addon Repo Restructure v1.0.0
+
+## For the Project Designer (Human Testing)
+
+### Critical: HA Addon Discovery
+
+1. In Home Assistant, go to **Settings > Add-ons > Add-on Store**
+2. Click the three-dot menu (top right) and select **Repositories**
+3. Add (or re-add) this repository URL: `https://github.com/troon4891/PlayRooms`
+4. Close the dialog and refresh the page
+5. **You should see** "PlayRooms" in the add-on list
+6. **If it's not there**, the restructure failed — HA cannot find the addon
+
+### Addon Info Page
+
+7. Click on the **PlayRooms** addon in the list
+8. Go to the **Documentation** tab
+9. **You should see** the full DOCS.md content: overview, configuration reference, transport requirements, tested platforms
+10. **If the documentation tab is empty** or says "No documentation available", the DOCS.md is not in the right place
+
+### Verify Nothing Broke
+
+11. If the addon was previously installed, try **Rebuild** from the three-dot menu on the addon Info tab
+12. The build should complete without errors
+13. Start the addon — logs should show normal startup
+14. **If the build fails** with COPY errors, the file paths inside the Dockerfile are broken
+
+### Setup Guides
+
+15. Check the repo on GitHub — navigate to `docs/setup-guides/`
+16. Open each guide (HA Supervisor, VirtualBox, Proxmox)
+17. **You should see** "PlayRooms" throughout (not "ButtPlug.io PlayRooms" or "HAButtPlugIO-PlayRooms")
+18. The repo URL in the HA setup guide should be `https://github.com/troon4891/PlayRooms`
+
+### Repository Structure
+
+19. On GitHub, verify these files exist at root: `repository.yaml`, `README.md`, `CLAUDE.md`, `CHANGELOG.md`
+20. Verify `playrooms/` subdirectory contains: `config.yaml`, `build.yaml`, `Dockerfile`, `run.sh`, `DOCS.md`
+21. Verify `playrooms/server/` and `playrooms/client/` contain the application code
+22. Verify `docs/setup-guides/` contains three setup guide files
+23. Verify `qa/` directory exists
+
+## For the QA Tester (Technical Testing — Claude in Chrome)
+
+### HA Addon Repository Validation
+
+1. Verify `repository.yaml` exists at the repo root with correct structure:
+   ```yaml
+   name: PlayRooms
+   url: https://github.com/troon4891/PlayRooms
+   maintainer: troon4891
+   ```
+
+2. Verify `playrooms/config.yaml` exists and contains:
+   - `slug: "playrooms"`
+   - `name: "PlayRooms"`
+   - `version: "1.0.0"`
+   - Valid `options:` and `schema:` sections
+
+3. Verify `playrooms/build.yaml` exists with `build_from` section
+
+4. Verify `playrooms/Dockerfile` exists and all COPY paths are relative to the addon directory:
+   - `COPY server/package.json server/package-lock.json /app/server/`
+   - `COPY server/ /app/server/`
+   - `COPY client/package.json client/package-lock.json /app/client/`
+   - `COPY client/ /app/client/`
+   - `COPY run.sh /`
+   These paths should resolve correctly because HA Supervisor uses the addon subdirectory as the Docker build context.
+
+5. Verify `playrooms/run.sh` exists with the `bashio` shebang and correct server path (`/app/server/dist/index.js`)
+
+6. Verify `playrooms/translations/en.yaml` exists with `configuration:` section
+
+### File Structure Verification
+
+7. Verify no addon files remain at root:
+   - `config.yaml` should NOT exist at root
+   - `build.yaml` should NOT exist at root
+   - `Dockerfile` should NOT exist at root
+   - `run.sh` should NOT exist at root
+   - `server/` should NOT exist at root
+   - `client/` should NOT exist at root
+   - `translations/` should NOT exist at root
+
+8. Verify project files remain at root:
+   - `README.md` ✓
+   - `CLAUDE.md` ✓
+   - `CHANGELOG.md` ✓
+   - `CONTRIBUTING.md` ✓
+   - `SECURITY.md` ✓
+   - `NOTICE.md` ✓
+   - `LICENSE` ✓
+   - `.gitignore` ✓
+   - `repository.yaml` ✓
+
+9. Verify `docs/` contains:
+   - `ARCHITECTURE-v1.0.md`
+   - `ROADMAP-v1.0.md`
+   - `setup-guides/setup-home_assistant_supervisor.md`
+   - `setup-guides/setup-virtualbox.md`
+   - `setup-guides/setup-proxmox.md`
+
+10. Verify `qa/.gitkeep` exists
+
+### Setup Guide Content Verification
+
+11. Search all three setup guides for old references — none should contain:
+    - `ButtPlug.io PlayRooms`
+    - `HAButtPlugIO-PlayRooms`
+    - `buttplug-playrooms`
+    - Version strings like `v3.` or `3.x`
+
+12. Each guide should contain the update note: "This guide is being updated for PlayRooms v1.0"
+
+13. The HA setup guide should reference the repo URL: `https://github.com/troon4891/PlayRooms`
+
+### DOCS.md Content Verification
+
+14. Verify `playrooms/DOCS.md` contains these sections:
+    - Overview
+    - Configuration Reference (HA Addon Options table + Standalone Docker table)
+    - Transport Requirements (Bluetooth LE, Serial Port, USB HID)
+    - Hardware Passthrough (Standalone Docker)
+    - Setup Guides (links to `../../docs/setup-guides/`)
+    - Tested Platforms table
+    - Architecture
+    - API Endpoints
+    - Socket.IO Events
+
+### CLAUDE.md Content Verification
+
+15. Verify CLAUDE.md contains the new "Home Assistant Addon Structure" section between "Code Principles" and "Documentation Maintenance"
+
+16. Verify CLAUDE.md contains the new "Git Workflow" section at the end of "After Every Implementation"
+
+17. Verify the Directory Layout in CLAUDE.md shows the new structure with:
+    - `repository.yaml` at root
+    - `playrooms/` subdirectory containing addon files
+    - `qa/` directory
+    - `docs/setup-guides/`
+
+18. Verify Documentation Maintenance table references updated paths:
+    - `playrooms/DOCS.md` (not `docs/DOCS.md`)
+    - `playrooms/config.yaml` (not `config.yaml`)
+
+### CHANGELOG.md Verification
+
+19. Verify CHANGELOG.md has an `[Unreleased]` section documenting:
+    - The HA addon restructure fix
+    - The setup guides addition
+    - The DOCS.md expansion
+    - The CLAUDE.md updates
+    - The qa/ directory creation
+
+### Docker Build Path Verification (Critical)
+
+20. The most important technical check: verify that the Dockerfile COPY commands will still work when HA Supervisor runs `docker build` with the `playrooms/` directory as the build context:
+    - `playrooms/server/` exists → `COPY server/` will work ✓
+    - `playrooms/client/` exists → `COPY client/` will work ✓
+    - `playrooms/run.sh` exists → `COPY run.sh /` will work ✓
+
+21. Ask the Project Designer to attempt a rebuild of the addon in HA Supervisor and check the addon logs for any errors. Look for:
+    - `COPY failed: file not found` — means a path is wrong
+    - `npm ERR!` — means package.json/package-lock.json missing
+    - Normal startup logs: `[PlayRooms] Server listening on port 8099`
