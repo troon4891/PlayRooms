@@ -73,36 +73,43 @@ This repo owns `src/shared/relay-types.ts` — the relay protocol types used by 
 
 ```
 PlayRooms/
-├── docs/
-│   ├── ARCHITECTURE-v1.0.md
-│   ├── ROADMAP-v1.0.md
-│   └── DOCS.md                        # Technical documentation
-├── server/
-│   └── src/
-│       ├── shared/
-│       │   └── relay-types.ts        # Source of truth — copied to Portal
-│       ├── plugins/
-│       │   └── loader.ts             # Generic plugin loader
-│       ├── providers/                 # Provider-specific initialization
-│       ├── rooms/
-│       ├── widgets/
-│       ├── auth/
-│       ├── db/
-│       └── types/
-├── client/
-│   └── src/
-│       └── components/
-│           └── panel-controls/       # Custom ToyBox control primitives
-├── config.yaml                        # HA addon config
-├── blueprints/                        # HA Blueprint YAML files (voice safeword, button stop)
-├── Dockerfile
+├── repository.yaml                    # HA addon repository identity
 ├── README.md                          # Project landing page
 ├── CHANGELOG.md                       # Version history
 ├── CONTRIBUTING.md                    # Contributor guidelines
 ├── NOTICE.md                          # Third-party attributions
 ├── SECURITY.md                        # Vulnerability reporting policy
 ├── LICENSE                            # Apache 2.0
-└── CLAUDE.md                          # This file
+├── CLAUDE.md                          # This file
+├── docs/
+│   ├── ARCHITECTURE-v1.0.md
+│   ├── ROADMAP-v1.0.md
+│   └── setup-guides/                 # Platform-specific setup documentation
+├── qa/                                # QA checklists
+└── playrooms/                         # HA addon subdirectory
+    ├── config.yaml                    # HA addon config
+    ├── build.yaml                     # Build architecture targets
+    ├── Dockerfile
+    ├── run.sh                         # Container entrypoint
+    ├── DOCS.md                        # HA addon documentation tab
+    ├── translations/en.yaml           # HA option descriptions
+    ├── blueprints/                    # HA Blueprint YAML files (voice safeword, button stop)
+    ├── server/
+    │   └── src/
+    │       ├── shared/
+    │       │   └── relay-types.ts    # Source of truth — copied to Portal
+    │       ├── plugins/
+    │       │   └── loader.ts         # Generic plugin loader
+    │       ├── providers/             # Provider-specific initialization
+    │       ├── rooms/
+    │       ├── widgets/
+    │       ├── auth/
+    │       ├── db/
+    │       └── types/
+    └── client/
+        └── src/
+            └── components/
+                └── panel-controls/   # Custom ToyBox control primitives
 ```
 
 ---
@@ -158,6 +165,59 @@ Treat each repository as the source of truth for its own code.
 
 ---
 
+## Home Assistant Addon Structure
+
+This repo serves dual purpose: it's both a GitHub project AND a Home Assistant addon repository. HA Supervisor has strict structural requirements.
+
+### Critical Rules
+
+**HA does NOT look at root-level files for addon detection.** It scans subdirectories for `config.yaml`. The addon content MUST live in the `playrooms/` subdirectory.
+
+**`repository.yaml` must exist at root.** This tells HA "this is an addon repository, scan my subdirectories for addons."
+
+### Repo Structure (HA perspective)
+
+```
+PlayRooms/                          ← GitHub sees this as the project root
+├── repository.yaml                 ← HA scans this first
+├── README.md                       ← GitHub landing page (HA ignores)
+├── CLAUDE.md                       ← Project tooling (HA ignores)
+├── docs/                           ← Project docs (HA ignores)
+└── playrooms/                      ← HA finds this as an addon
+    ├── config.yaml                 ← Addon identity, options, schema
+    ├── build.yaml                  ← Build architecture targets
+    ├── Dockerfile                  ← Container build instructions
+    ├── run.sh                      ← Container entrypoint
+    ├── DOCS.md                     ← HA renders this as the addon documentation tab
+    ├── CHANGELOG.md                ← HA renders this as the addon changelog tab
+    ├── translations/en.yaml        ← HA renders option descriptions in Supervisor UI
+    ├── icon.png                    ← Addon icon (optional, displayed in addon store)
+    ├── logo.png                    ← Addon logo (optional, displayed in addon page)
+    ├── server/                     ← Server code
+    └── client/                     ← Client code
+```
+
+### What HA Supervisor reads:
+- `repository.yaml` — repo identity
+- `playrooms/config.yaml` — addon name, slug, version, options, schema, permissions
+- `playrooms/build.yaml` — base image per architecture
+- `playrooms/Dockerfile` — how to build the container
+- `playrooms/DOCS.md` — rendered as addon documentation tab
+- `playrooms/CHANGELOG.md` — rendered as addon changelog tab (if present)
+- `playrooms/translations/en.yaml` — option labels and descriptions in Supervisor UI
+
+### Common Mistakes (don't do these):
+- Putting config.yaml at root — HA will not find the addon
+- Forgetting repository.yaml — HA will reject the repo with "not a valid add-on repository"
+- Changing the slug in config.yaml without coordinating — breaks existing installations
+- Putting DOCS.md outside the addon directory — HA won't render it
+
+### Reference
+- HA Addon docs: https://developers.home-assistant.io/docs/add-ons
+- Example addon repo: https://github.com/hassio-addons/app-example
+
+---
+
 ## Documentation Maintenance
 
 After every implementation, review and update all affected documentation. These files are part of the deliverable — not an afterthought.
@@ -165,12 +225,12 @@ After every implementation, review and update all affected documentation. These 
 | File | What it covers | When to update |
 |---|---|---|
 | `README.md` | Project landing page — what PlayRooms is, installation, quick start, feature overview | New features, changed setup steps, new dependencies or requirements |
-| `docs/DOCS.md` | Technical documentation — API endpoints, configuration reference, deployment guide | New endpoints, config changes, new environment variables, architectural changes |
+| `playrooms/DOCS.md` | Technical documentation — API endpoints, configuration reference, deployment guide. HA renders this as the addon documentation tab. | New endpoints, config changes, new environment variables, architectural changes |
 | `CHANGELOG.md` | Version history — what changed in each release | Every implementation (this is mandatory, not conditional) |
 | `NOTICE.md` | Third-party attributions — libraries, licenses, upstream projects | New dependencies added, dependencies removed, license changes |
 | `CONTRIBUTING.md` | Contributor guidelines — how to set up dev environment, code style, PR process | Dev environment changes, new tooling, process changes |
 | `SECURITY.md` | Vulnerability reporting policy — how to report security issues | Only if the reporting process changes |
-| `config.yaml` | HA addon configuration schema | New provider settings (built-in providers' manifest settings get composited here), new addon options |
+| `playrooms/config.yaml` | HA addon configuration schema | New provider settings (built-in providers' manifest settings get composited here), new addon options |
 
 **The rule:** If your code change would make any of these files inaccurate, update them in the same commit. The Project Designer and PM should never have to ask "did you update the README?" — it should already be done.
 
@@ -244,3 +304,16 @@ Example:
 **Scope the checklist to what you changed.** A patch gets a short, targeted list. A feature gets a full walkthrough. Both sections should cover the same functionality — one in plain language, one with technical precision.
 
 The QA Tester can find things the Project Designer can't (console errors, network issues, DOM problems, race conditions). The Project Designer can find things the QA Tester can't (does this *feel* right, is the UX intuitive, is the label confusing). Both perspectives matter.
+
+### Git Workflow
+
+Claude Code cannot push directly to `beta` or `main`. All work goes to a `claude/*` feature branch which is automatically pushed. The Project Designer merges via PR on GitHub.
+
+**Your workflow:**
+1. Create a feature branch (Claude Code does this automatically with `claude/` prefix)
+2. Commit your work with clear messages
+3. Push the feature branch (this succeeds)
+4. Tell the Project Designer the branch is ready for PR to beta
+5. Do NOT attempt to merge to beta locally or push to beta — it will fail with a 403
+
+**Do NOT waste time** trying to merge to beta, push to beta, or work around the branch restriction. Just push your feature branch and tell the user to create the PR.
