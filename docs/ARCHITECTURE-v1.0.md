@@ -1,9 +1,9 @@
 # PlayRooms v1.0 — Architecture Specification
 
 **Status:** Draft  
-**Date:** 2026-02-28  
+**Date:** 2026-03-09 (revised from 2026-02-28)  
 **Authors:** Project Designer, Claude (Project Manager)  
-**Preceding version:** HAButtPlugIO-PlayRooms v3.3.0  
+**Preceding version:** HAButtPlugIO-PlayRooms v3.3.0  - Archived (https://github.com/troon4891/HAButtPlugIO-PlayRooms.git)
 
 ---
 
@@ -17,7 +17,8 @@ Version 1.0 represents an architectural evolution from the Buttplug.io-only desi
 
 - A self-hosted addon (Home Assistant) or standalone Docker container
 - A room-based platform with bidirectional communication widgets (Chat, Voice, Video), a one-way Webcam feed widget, and the ToyBox for device control
-- Connected to guests via a Portal relay server (no port forwarding required)
+- Usable standalone for solo play — the admin dashboard is the full control surface
+- Connected to guests exclusively via a PlayRooms Portal relay server — there is no direct guest connection to the Host
 - Extensible through Device Providers that bring hardware into the ToyBox
 
 ### 1.2 Plugin Architecture
@@ -56,7 +57,7 @@ The project moves from a single monorepo to a multi-repo structure:
 | Repository | Deployment | Purpose |
 |---|---|---|
 | `PlayRooms` | HA addon / standalone Docker | Host platform — server, client, plugin loader, device control |
-| `PlayRooms-Portal` | HA addon / cloud Docker | Relay server — stateless message proxy for remote guest access |
+| `PlayRooms-Portal` | HA addon / cloud Docker | Guest front door — serves guest client, relays traffic, bundles TURN server |
 | `PlayRooms-DP-Buttplug` | Plugin (consumed by Host) | Device Provider: Buttplug.io / Intiface Engine |
 | `PlayRooms-DP-DGLabs-BLE` | Plugin (consumed by Host) | Device Provider: DG-LAB Coyote via direct Bluetooth LE |
 | `PlayRooms-DP-DGLabs-WS` | Plugin (consumed by Host) | Device Provider: DG-LAB Coyote via WebSocket (through DG-LAB app) |
@@ -71,19 +72,25 @@ Each repo has its own versioning, issue tracking, and release cycle.
 
 The Host and Portal are fully separate applications:
 
-**Host** (`PlayRooms`): The full platform — room management, authentication, widgets, plugin loader, device control, ToyBox command pipeline. Runs on the user's home network. Has no built-in guest-facing public endpoint. For local-only play, guests connect directly to the Host on the LAN. For remote guests, the Host connects outbound to a Portal.
+**Host** (`PlayRooms`): The full platform — room management, authentication, admin dashboard, plugin loader, device control, ToyBox command pipeline. Runs on the user's home network. Serves only the admin interface (via HA Ingress or standalone login). Has no guest-facing port and serves no guest UI. The admin dashboard includes the full ToyBox control surface — in solo play (no Portal, no guests), the host uses devices directly from the dashboard. When a Portal is configured, the Host connects outbound to it.
 
-**Portal** (`PlayRooms-Portal`): A lightweight, stateless relay server. No database, no device code, no plugin system, no widgets. Receives guest connections, validates tokens by forwarding to the Host, and relays messages bidirectionally. Deployed either as a sister HA addon (installed and configured before the Host) or as a standalone Docker container on a VPS/cloud server.
+**Portal** (`PlayRooms-Portal`): The guest front door. Serves the guest web client (pulled from the Host during handshake — see §2.6). Relays all guest traffic (Socket.IO) bidirectionally to the Host. Bundles a TURN server (coturn) for WebRTC NAT traversal (Voice, Video, Webcam). Proxies the in-room pairing HTTP flow (`/pair/*` routes forwarded to the Host). Validates guest tokens by forwarding to the Host — no database, no business logic, no device code, no plugin system. Deployed either as a sister HA addon or as a standalone Docker container on a VPS/cloud server.
 
 **Deployment scenarios:**
 
 | Scenario | What to install | How guests connect |
 |---|---|---|
-| Local only | Host addon | Direct LAN connection |
-| Remote (HA Portal) | Host addon + Portal addon | Guests → Portal (on HA) → Host |
-| Remote (Cloud Portal) | Host addon + Portal (cloud Docker) | Guests → Portal (VPS) → Host |
+| Solo play (no guests) | Host addon only | No guests — host uses admin dashboard directly |
+| Local play with guests | Host addon + Portal addon (same HA) | Guests → Portal (LAN) → Host (internal Docker network) |
+| Remote play with guests | Host addon + Portal (cloud Docker) | Guests → Portal (internet) → Host (outbound relay) |
 
-When using a Portal, the Host must be configured with the Portal URL and shared secret. The Portal must be deployed and accessible before the Host attempts to connect.
+When using a Portal, the Portal must be deployed and accessible before the Host connects. During the relay handshake, the Portal passes its public-facing URL to the Host (see §2.1). The Host stores this URL and uses it when generating share links — no separate "Portal public URL" configuration field on the Host side.
+
+**HA addon auto-discovery:** When both addons are installed on the same HA instance, the Host can use the Supervisor API to detect the Portal addon and pre-fill the internal relay connection URL (e.g., `tcp://addon_playrooms_portal:3001`). The Portal's guest-facing LAN address still requires user configuration (port mapping in the Portal addon config).
+
+**Internal architecture note:** The Host implements the relay connection as an array, but v1.0 only supports a single Portal in the UI and configuration. This allows future versions to support multiple simultaneous Portals without restructuring.
+
+**Solo play UX:** When no Portal is configured, guest-related features (share links, in-room QR, guest moderation, communication widgets) are visible but greyed out in the admin dashboard with a "Requires Portal" tooltip. The ToyBox and device management are fully functional. Solo play is a first-class use case, not a degraded mode — the Portal is an optional expansion that enables multiplayer.
 
 ### 2.1 Shared Relay Protocol
 
@@ -91,7 +98,39 @@ The Host and Portal communicate via a relay protocol. The relay type definitions
 
 Both sides include a `RELAY_PROTOCOL_VERSION` constant. During the handshake, versions are compared. If they don't match, the connection fails with a clear error: "Relay protocol mismatch: Host v2, Portal v1. Update your Portal deployment."
 
+**Portal → Host handshake payload:**
+- `RELAY_PROTOCOL_VERSION` — compared against the Host's version; mismatch fails the connection
+- `portalPublicUrl` — the Portal's externally-reachable URL (e.g., `https://play.example.com`), stored by the Host for share link generation
+
+**Host → Portal handshake payload:**
+- `RELAY_PROTOCOL_VERSION` — for bidirectional validation
+- `CLIENT_API_VERSION` — the expected guest client API version (see §2.5)
+- Guest client bundle — the compiled guest web client for the Portal to serve (see §2.6)
+
 The Portal repo's `CLAUDE.md` specifies: relay types are copied from the Host repo — never edit them directly in the Portal.
+
+### 2.5 Client API Version
+
+The guest client JS communicates with the Host through the Portal relay via Socket.IO events. The client and Host must agree on the event contract. A `CLIENT_API_VERSION` constant in the Host tracks this contract version, separate from the relay protocol version.
+
+When a guest connects, the client sends its API version in the Socket.IO handshake. The Host compares it to the expected version. If incompatible, the Host rejects the connection with a clear message: "Guest client outdated — please ask the host to update their Portal deployment." This catches the scenario where the Host is upgraded but the Portal has not yet pulled the updated client bundle.
+
+The relay protocol version and client API version are independent:
+- **Relay protocol version**: Host ↔ Portal communication contract
+- **Client API version**: Guest client ↔ Host communication contract (through the Portal relay)
+
+### 2.6 Client Bundle Delivery
+
+The Portal serves the guest web client as static files, but it does not maintain its own copy of the client code. During the relay handshake, the Host sends the compiled guest client bundle to the Portal. The Portal stores it and serves it to guests.
+
+This means upgrading the Host automatically upgrades what guests see — the Portal stays truly stateless with no independent client code to version. When the Host reconnects after an upgrade, the Portal receives the new bundle and begins serving it to new connections.
+
+**Benefits:**
+- Single source of truth for the guest client (the Host repo)
+- No version coordination needed between Host and Portal deploys
+- The Portal never contains business logic or UI code of its own
+
+**Tradeoff:** The Portal must successfully connect to the Host at least once before it can serve any guests. If the Host is unreachable, the Portal has no client bundle to serve. This is acceptable because a Portal without a Host connection can't relay commands anyway.
 
 ### 2.2 Plugin Discovery and Loading
 
@@ -202,7 +241,7 @@ displayName: "DG-LAB Coyote (WebSocket)"
 version: "1.0.0"
 description: "Control DG-LAB Coyote devices via WebSocket through the DG-LAB mobile app"
 author: "PlayRooms Team"
-license: "Apache-2.0"
+license: "MIT"
 providerApiVersion: 1
 
 # What this provider needs from the host
@@ -1068,14 +1107,17 @@ Roles define the ceiling. Room widget configuration determines what's actually a
 
 ### 6.1.1 Widget Categories
 
-**Bidirectional communication** (Chat, Voice, Video): Participants talk to each other. Gated by role (Social and above) and room configuration (host enables/disables per room). These require no special setup beyond toggling them on.
+**Bidirectional communication** (Chat, Voice, Video): Participants talk to each other. Gated by role (Social and above) and room configuration (host enables/disables per room). These require no special setup beyond toggling them on. Voice and Video use WebRTC peer-to-peer connections, with the TURN server bundled in the Portal handling NAT traversal for remote guests. WebRTC signaling is relayed through the Host (via the Portal) to ensure all connections are authenticated and logged.
 
-**One-way broadcast** (Webcam): A configurable video feed into the room. The host sets the source — which can be:
-- A camera entity from Home Assistant (any HA camera integration)
-- A raw camera URL (RTSP, MJPEG, or HLS stream endpoint)
-- A local webcam on the device viewing the dashboard (browser-dependent, may not work in all contexts)
+**One-way broadcast** (Webcam): A video feed from the host into the room, delivered via WebRTC. The host's admin dashboard captures a camera feed from the device running the dashboard (laptop webcam, phone camera, USB camera connected to the machine) and establishes a WebRTC peer connection to each guest watching. The TURN server in the Portal handles NAT traversal for remote guests. The feed is encrypted end-to-end via DTLS — the Portal relays encrypted packets but cannot view the content.
 
-The Webcam widget appears in the room once configured. All roles including Viewer can watch it — it's a passive feed, not a communication channel. The host adds it to the room and configures the source in Room Settings → Widgets → Webcam.
+The Webcam feed is active only while the admin dashboard is open and streaming. If the host locks their device or closes the dashboard, the feed stops. This is intentional — the host being present at the dashboard IS the session being active.
+
+The Webcam widget appears in the room once the host enables it in Room Settings → Widgets → Webcam. All roles including Viewer can watch it — it's a passive feed, not a communication channel.
+
+**Known limitation (v1.0):** Voice and Video widgets require HTTPS (secure context) for browser `getUserMedia` access. Local Portal deployments on plain HTTP support device control and Chat only. Remote Portal deployments should use HTTPS. Users can work around this on LAN with Cloudflare tunnels, reverse proxies with SSL, or self-signed certificates.
+
+**Deferred to future version:** HA camera entity integration and raw RTSP/MJPEG/HLS URL sources for the Webcam widget. These require server-side stream ingestion and relay, which adds significant complexity. The v1.0 Webcam is browser-sourced WebRTC only.
 
 ### 6.2 Share Link Permissions
 
@@ -1122,52 +1164,51 @@ Emergency stop commands from Pals always go through regardless of AI interaction
 
 ### 6.5 Access Paths
 
-There are three distinct ways to reach PlayRooms, each with a different trust model, authentication mechanism, and UI:
+There are two distinct ways to reach PlayRooms, each with a different trust model, authentication mechanism, and UI:
 
 | Path | URL | Auth | Connects To | UI |
 |---|---|---|---|---|
-| **Admin** | `ha:8123/ingress/playrooms` (HA) or `host:3000/admin` (standalone) | HA Ingress login or standalone JWT login | Host directly | Full admin dashboard |
-| **In-Room** | `host:3000/pair/room-{id}` (from QR scan) | Code challenge + session token | Host directly (LAN) | Quick-action panel |
-| **LAN Guest** | `host:3000/room/{id}?token={...}` (from share link) | PlayRooms share link token | Host directly (LAN) | Guest panel (role-based) |
-| **Remote Guest** | `portal.example.com/room/{id}?token={...}` (from share link) | PlayRooms share link token via Portal | Portal → Host relay | Guest panel (role-based) |
+| **Admin** | `ha:8123/ingress/playrooms` (HA) or `host:3000/admin` (standalone) | HA Ingress login or standalone JWT login | Host directly | Full admin dashboard with ToyBox |
+| **Guest** | `portal.example.com/room/{id}?token={...}` (from share link) or `portal.example.com/pair/room-{id}` (from in-room QR) | PlayRooms share link token or code challenge, validated by Host via Portal relay | Portal → Host relay | Guest panel (role-based) |
 
-**Admin** is the only path that touches HA authentication. The admin configures rooms, manages devices, creates share links, and generates in-room QR codes. This path requires an HA account (when running as HA addon) or a standalone admin login.
+**Admin** is the only path that touches HA authentication (when running as HA addon). The admin configures rooms, manages devices, creates share links, generates in-room QR codes, and uses the ToyBox directly. In solo play (no Portal configured), this is the only path that exists. Guest-related features are visible but greyed out with a "Requires Portal" tooltip.
 
-**In-Room** bypasses HA auth entirely. PlayRooms exposes its own port (e.g., 3000) separate from Ingress. The QR code points to this port on the local network. Authentication is handled by PlayRooms itself via a code challenge (see §6.6). No HA account needed.
+**Guest** is the only path for all non-admin access. Every guest — whether on the same LAN or across the internet, whether joining via share link or in-room QR scan — connects through the Portal. The Portal serves the guest web client, relays the WebSocket connection to the Host, and the Host handles all authentication, authorization, and command routing. The guest never communicates with the Host directly.
 
-**LAN Guest** also uses the direct port. The share link token is the authentication — PlayRooms validates it directly. Same port as in-room, different token type and UI.
-
-**Remote Guest** can't reach the local port, so they connect through the Portal. The Portal relays to the Host. Same token-based auth, just routed through the relay.
+**Safety implication:** The host (admin) is always the device wearer. They always have direct access to the admin dashboard, HA voice commands, and physical emergency stop buttons — none of which depend on the Portal. If the Portal goes down, guests lose their connection, but the device wearer retains all local emergency stop capabilities. See §7.3 for details.
 
 ### 6.6 In-Room Access Pairing
 
-In-room access uses a two-step pairing flow — QR code for addressing, code challenge for authentication. This is modeled on AirPlay-style device pairing: the QR gets you to the right door, the code proves you're standing in front of it.
+In-room access uses a two-step pairing flow — QR code for addressing, code challenge for authentication. This is modeled on AirPlay-style device pairing: the QR gets you to the right door, the code proves you're standing in front of it. The entire flow routes through the Portal.
+
+**Prerequisite:** In-room pairing requires a Portal (local or remote). If no Portal is configured, the "Show In-Room QR" button is disabled with a message: "In-room access requires a PlayRooms Portal."
 
 #### First Pairing
 
-1. Admin taps **"Show In-Room QR"** in the room header on the dashboard
-2. A QR code appears on the admin screen. It encodes the pairing URL: `http://{host-ip}:3000/pair/room-{roomId}`
-3. The in-room person scans the QR on their phone. Browser opens the URL.
-4. PlayRooms Host sees an unknown device hitting the pair endpoint. It generates a short **4-digit code** (e.g., `7249`)
+1. Admin taps **"Show In-Room QR"** in the room header on the admin dashboard
+2. A QR code appears on the admin screen. It encodes the pairing URL on the **Portal**: `http://{portal-address}/pair/room-{roomId}` (the Host builds this URL using the Portal's public URL received during handshake — see §2.1)
+3. The in-room person scans the QR on their phone. Browser opens the URL on the Portal.
+4. The Portal proxies the pairing request to the Host (`/pair/*` routes are forwarded transparently). The Host sees an unknown device and generates a short **4-digit code** (e.g., `7249`)
 5. The code appears on **both screens simultaneously**:
-   - Admin dashboard: "Pairing request — Code: **7249**"
-   - Phone: "Enter the code shown on the host screen" with an input field
-6. Person types `7249` on their phone
-7. Host validates: codes match, code hasn't expired → issues a **session token** (signed JWT containing room ID, `present: true` flag, Moderator role, session expiry)
-8. Phone stores the token in memory. Connection established. Admin dashboard shows "In-room access: connected ✓" and dismisses the QR
+   - Admin dashboard (on the Host): "Pairing request — Code: **7249**"
+   - Phone (through the Portal): "Enter the code shown on the host screen" with an input field
+6. Person types `7249` on their phone. The Portal forwards the submission to the Host.
+7. Host validates: codes match, code hasn't expired → issues a **session token** (signed JWT containing room ID, `present: true` flag, Moderator role, session expiry). Token is relayed back through the Portal.
+8. Phone stores the token in memory. WebSocket connection established through the Portal. Admin dashboard shows "In-room access: connected ✓" and dismisses the QR
 
 #### Reconnection (screen lock, tab switch, brief disconnect)
 
 1. Phone still has the session token in memory
-2. Phone reconnects to the Host with the token
-3. Host validates the JWT signature and expiry — still valid
-4. Reconnected silently. No code challenge, no interruption on the admin screen
+2. Phone reconnects to the Portal with the token
+3. Portal forwards the token to the Host for validation
+4. Host validates the JWT signature and expiry — still valid
+5. Reconnected silently. No code challenge, no interruption on the admin screen
 
 #### Re-pairing (browser closed, token lost)
 
 1. Phone has no token
 2. Admin taps "Show In-Room QR" again
-3. Scan → code challenge → pair. Same flow as first time. Takes seconds.
+3. Scan → code challenge → pair. Same flow as first time, routed through the Portal. Takes seconds.
 4. The QR encodes the same URL each time — only the challenge code changes per attempt
 
 #### Code Challenge Properties
@@ -1275,6 +1316,10 @@ The provider's `SAFETY.md` must explain exactly what happens at the hardware lev
 > **DG-LAB Coyote Emergency Stop:**
 > Sends intensity 0 to both channels via absolute set (B0 command with mode 0b1100). Waveform output stops. If the WebSocket connection to the DG-LAB app has dropped, the Coyote will continue its last waveform at its last intensity until the app's own timeout triggers (approximately 10 seconds). For this reason, the physical scroll wheels on the Coyote should be used as a manual hardware fallback.
 
+**Safety context:** The host (admin) is always the device wearer. Guests are remote controllers — they are never wearing the devices. This means the person most at risk always has the most direct access to emergency stop — via the admin dashboard UI, HA voice commands, and physical buttons, none of which depend on the Portal. If the Portal goes down, the host retains all local emergency stop capabilities. Guests lose the ability to send commands (including stop), but the device wearer is not left without recourse.
+
+For standalone Docker users (no HA), emergency stop options are more limited: admin dashboard UI and the REST API endpoint only. No voice safeword, no physical button automations. These users should be aware that their safety options depend on having the admin dashboard accessible.
+
 ### 7.4 External Trigger Sources
 
 The UI stop button assumes someone can reach a screen and tap accurately. In practice, users may not be able to interact with a screen at all. PlayRooms supports multiple external paths into the same `stopAll()` pipeline.
@@ -1284,10 +1329,12 @@ All trigger sources converge on the same internal function. PlayRooms doesn't pr
 ```
 HA Voice ("Hey Jarvis, RED")  ──→ HA Automation ──→ service: playrooms.emergency_stop
 ESP32 physical button         ──→ HA Automation ──→ service: playrooms.emergency_stop
-UI stop button (existing)     ──→ Socket.IO     ──→ stopAll()
-In-room user stop             ──→ Socket.IO     ──→ stopAll()
-REST endpoint (standalone)    ──→ HTTP API      ──→ stopAll()
+Admin UI stop button          ──→ Direct         ──→ stopAll()
+Guest stop (via Portal)       ──→ Portal relay   ──→ stopAll()
+REST endpoint (standalone)    ──→ HTTP API       ──→ stopAll()
 ```
+
+Note the distinction: the admin UI stop is direct (the admin dashboard communicates with the Host without the Portal). Guest stop goes through the Portal relay and is therefore dependent on Portal connectivity. This reinforces why HA voice/button emergency stops are critical — they bypass the Portal entirely and work even when the network path to guests is broken.
 
 #### HA Service (addon mode)
 
@@ -1384,9 +1431,10 @@ The host panel includes a live activity feed showing what's happening across all
 - Per-device status: active/idle, current intensity values, active pattern
 - Per-control last-changed-by: which guest (or host) last adjusted a control
 - Connection health: device connected/disconnected, provider health status
+- Portal connection health: connected/disconnected, relay latency — prominently visible, not buried in a status page
 - Command log: recent commands sent (scrollable, limited buffer)
 
-This is not a full audit log — it's a real-time situational awareness tool for the room host.
+This is not a full audit log — it's a real-time situational awareness tool for the room host. Portal connection status is particularly important — if the relay drops, all guests are disconnected and the host should know immediately.
 
 ---
 
@@ -1557,6 +1605,8 @@ The room UI presents multiple widgets (ToyBox, Chat, Voice, Video, Webcam) and u
 
 ### 10.1 Mobile Layout (Guest Interface)
 
+The guest interface is served by the Portal as a web application. Once loaded, it communicates with the Host via the Portal's WebSocket relay. The layout system runs entirely in the guest's browser — no Portal involvement in rendering.
+
 Mobile is the primary guest interface — one-handed operation on a 375px screen, potentially in low light.
 
 **Primary content area** — takes 70–80% of the screen. The widget the user is actively interacting with: ToyBox controls, Chat conversation, etc. Full interaction available.
@@ -1573,6 +1623,8 @@ One overlay at a time on mobile — a 375px screen can't support multiple floati
 
 ### 10.2 Desktop Layout (Host Interface)
 
+The admin dashboard is both the configuration interface AND the primary control surface. In solo play, it's the only interface. The ToyBox widget must be fully interactive on desktop — the host controls devices directly from sliders, buttons, and panels, with the same controls guests would see plus monitoring and override capabilities.
+
 Desktop has room for simultaneous views — the host needs situational awareness across multiple widgets.
 
 **Flexible grid:** Multiple widgets visible side-by-side. ToyBox on the left, Video on the right, Chat in a narrow column, Webcam visible simultaneously. Widgets are collapsible cards — collapse to a header bar or expand to full size.
@@ -1580,6 +1632,8 @@ Desktop has room for simultaneous views — the host needs situational awareness
 **Reorder by drag:** Drag widget headers to rearrange. The grid reflows based on available space.
 
 **Collapsible panels:** Each widget can be collapsed to its header bar to save space. The header shows a minimal status line (e.g., collapsed Chat header shows unread message count, collapsed ToyBox shows active device count).
+
+**Solo play mode:** When no Portal is configured, communication widgets (Chat, Voice, Video) are hidden entirely — no reason to show greyed-out widgets that require guests. The layout focuses on ToyBox and Webcam as the primary content. When a Portal connects, the full widget set becomes available.
 
 ### 10.3 Layout Principles
 
@@ -1642,9 +1696,9 @@ The acceptance is stored in the database. If the terms are updated in a future v
 
 ### 11.3 Guest Lobby Consent (Guests — Join-Time)
 
-Before entering any room, every guest (remote via Portal, LAN, or in-room) sees a consent screen in the room lobby. This is about **activity consent**, not software liability — the admin carries the software liability.
+Before entering any room, every guest — whether connecting via a local or remote Portal, or via in-room QR pairing — sees a consent screen in the room lobby. This is about **activity consent**, not software liability — the admin carries the software liability.
 
-The consent screen does not expose the platform name, version, software details, or technical information. It describes only what the guest is about to participate in.
+The consent screen is served by the Portal as part of the guest client. The consent acknowledgment is relayed to the Host before the guest is admitted to the room. The screen does not expose the platform name, version, software details, or technical information. It describes only what the guest is about to participate in.
 
 **Guest consent text:**
 
@@ -1738,24 +1792,25 @@ The following systems from the 3.x codebase are reused in v1.0 with minimal chan
 | System | Status | Notes |
 |---|---|---|
 | Room management | Reuse | Room CRUD, settings, share links |
-| Authentication | Reuse | HA ingress + standalone JWT modes |
-| Portal relay (Host side) | Extract | Outbound relay client stays in Host; Portal server moves to PlayRooms-Portal |
-| Portal relay (Server side) | Extract | Moves to PlayRooms-Portal as standalone app; no PORTAL_MODE toggle |
+| Authentication | Reuse | HA ingress + standalone JWT modes (admin only) |
+| Portal relay (Host side) | Extract | Outbound relay client stays in Host; connects to Portal |
+| Portal relay (Server side) | Extract + Expand | Moves to PlayRooms-Portal; now also serves guest web client (pulled from Host), bundles TURN server (coturn), proxies pairing HTTP flow |
+| Guest web client | Extract | Guest React app moves from Host to Portal — served as static files delivered by Host during handshake |
 | Guest system | Evolve | Add role field (viewer/social/participant/moderator) to guests and share links |
-| Share links | Evolve | Add role selection and optional per-device caps |
+| Share links | Evolve | Add role selection and optional per-device caps; link URLs point to Portal |
 | Chat widget | Reuse | Text chat with persistence; add sender type flags (human/pal) |
-| Voice widget | Reuse | PTT and open voice modes (gated by role) |
-| Video widget | Reuse | Bidirectional video chat via WebRTC signaling (gated by role) |
-| Webcam widget | Reuse + Extend | One-way video feed; add configurable source (HA entity, camera URL, local webcam) |
+| Voice widget | Evolve | WebRTC peer-to-peer with TURN via Portal; signaling relayed through Host (gated by role) |
+| Video widget | Evolve | WebRTC peer-to-peer with TURN via Portal; signaling relayed through Host (gated by role) |
+| Webcam widget | Rewrite | Browser-sourced WebRTC from admin dashboard; HA camera/URL sources deferred to future version |
 | API keys & webhooks | Reuse | Scoped keys, HMAC-signed webhooks |
 | Rate limiting | Reuse | Sliding window on endpoints |
 | Database (SQLite/Drizzle) | Evolve | New tables for provider state, panel config, role on guests |
 | Device approval flow | Evolve | Moves behind provider interface |
 | Protocol filter | Evolve | Becomes provider-internal (Buttplug only) |
 | ToyBox widget (server) | Rewrite | Routes commands through provider layer with role checks |
-| ToyBox widget (client) | Rewrite | Schema-driven panel rendering with role-based views |
+| ToyBox widget (client) | Rewrite | Schema-driven panel rendering with role-based views; fully interactive on admin dashboard for solo play |
 | Buttplug client/engine | Extract | Becomes PlayRooms-DP-Buttplug internals |
-| Type system | Expand | New provider, panel, command, role types; shared relay types file |
+| Type system | Expand | New provider, panel, command, role types; shared relay types file; client API version constant |
 | Config/build system | Expand | Plugin loading, multi-repo build |
 
 ---
@@ -1831,6 +1886,14 @@ Items that need design decisions before or during implementation:
 
 11. **Device reconnection mid-session**: When a BLE device drops and reconnects, what happens? Resume at last state? Zero out for safety? Require re-approval? The provider likely handles the hardware side, but the platform needs an opinion on what the guest sees (panel goes to "reconnecting" state with a specific indicator, then resumes or resets).
 
+12. ~~**Portal pairing endpoint**: The Portal needs to relay the in-room pairing HTTP flow (QR scan → code challenge → token issuance). Is this implemented as a simple HTTP reverse proxy for `/pair/*` routes, or does the Portal need awareness of the pairing protocol?~~ **Resolved — simple proxy.** The Portal forwards `/pair/*` requests to the Host and returns whatever the Host responds with. No protocol awareness needed.
+
+13. **Token validation caching on Portal**: All guest token validation is a relay round-trip to the Host. For a cloud Portal with the Host on a residential connection, this adds latency on every reconnection. **Proposed approach for future optimization:** When the Portal forwards a token to the Host and gets back "valid," it caches: token hash → valid, TTL 60 seconds. On reconnection within that window, the Portal accepts immediately and re-validates with the Host in the background. If the background check fails (token was revoked), the Portal disconnects the guest. Low priority for v1.0 but worth noting as a known optimization point.
+
+14. **Webcam WebRTC scalability**: The admin dashboard establishes one WebRTC peer connection per guest watching the Webcam. At 720p that's roughly 1.5-3 Mbps upload per guest. With 5+ guests, the host's browser is encoding and uploading multiple simultaneous streams — most residential uploads and laptop CPUs hit a wall around 3-5 streams. Should there be a configurable max viewers for Webcam? Future version could use an SFU (Selective Forwarding Unit) in the Portal — host sends one stream, Portal distributes to N guests.
+
+15. ~~**Solo play UX**: When no Portal is configured, several features become unavailable. Should the admin dashboard hide these features entirely, grey them out with a "requires Portal" tooltip, or show them with a prompt to install the Portal?~~ **Resolved — greyed out with "Requires Portal" tooltip.** Solo play is a first-class use case. Communication widgets are hidden entirely (no reason to show them without guests). Share links, in-room QR, guest moderation are visible but greyed out to signal the Portal expansion is available.
+
 ---
 
 ## 16. Planned Feature: PlayRooms Pals (v1.1+)
@@ -1885,7 +1948,7 @@ settings:
 
 ### 16.3 How Pals Connect to Rooms
 
-A Pal connects to a room via the same Socket.IO infrastructure as human guests, but through an internal path rather than a share link. The platform creates a system guest with the configured role and joins it to the room.
+A Pal connects to a room via the same Socket.IO infrastructure as human guests, but through an internal path rather than a share link. The platform creates a system guest with the configured role and joins it to the room. Pals are Host-side entities — they connect directly to the Host's internal Socket.IO server, not through the Portal. This is a clean separation: the Portal handles external human guests, the Host handles internal AI participants.
 
 The Pal receives:
 - **Text events**: Chat messages, device state changes, guest join/leave, room state updates
@@ -1931,19 +1994,19 @@ Each is a separate plugin repo with its own manifest, capabilities declaration, 
 
 | Term | Definition |
 |---|---|
-| **PlayRooms** | The core platform — server, client, portal |
+| **PlayRooms** | The core Host platform — admin dashboard, server, plugin loader, device control. Does not include the Portal. |
 | **Plugin** | A loadable module with a declared type (device-provider, pal, etc.) |
 | **Device Provider** | A plugin that integrates a class of hardware devices (`type: device-provider`) |
 | **Pal** | An AI-backed room participant powered by an LLM (`type: pal`) — planned for v1.1+ |
-| **ToyBox** | The room widget that contains Toy Panels |
+| **ToyBox** | The room widget that contains Toy Panels — fully interactive on the admin dashboard, not just monitoring |
 | **Toy Panel** | The UI surface for a single device, rendered from a provider's schema |
 | **Panel Schema** | A declarative description of controls, layouts, and mappings |
 | **Control Primitive** | A standard UI element type rendered from a panel schema (slider, rampSlider, positionControl, bidirectionalSlider, timedButton, linkedGroup, toggle, button, buttonGroup, dropdown, patternPicker) |
 | **Settings Cascade** | The five-tier hierarchy: Provider Defaults → Device Global → Room Config → Share Link/Guest Caps → Live State |
 | **Guest Role** | Permission level assigned to a room participant: Viewer, Social, Participant, Moderator |
-| **In-Room Access** | QR + code challenge pairing flow for physically present users — grants Moderator role with `present: true` flag and quick-action UI |
+| **In-Room Access** | QR + code challenge pairing flow for physically present users — QR points to the local Portal, code challenge is validated by the Host through the Portal relay, grants Moderator role with `present: true` flag and quick-action UI |
 | **Code Challenge** | 4-digit ephemeral code displayed on admin screen during in-room pairing — proves physical presence |
-| **Access Paths** | Three ways to reach PlayRooms: Admin (HA Ingress/standalone login), In-Room (QR + code challenge on LAN), Guest (share link via LAN or Portal) |
+| **Access Paths** | Two ways to reach PlayRooms: Admin (HA Ingress/standalone login → Host) and Guest (share link or in-room QR → Portal → Host relay) |
 | **AI Interaction Flag** | Provider-level declaration of whether Pals can control its devices |
 | **AI Control Policy** | Per-control safety policy for AI interaction — max percent, ramp requirements, step limits, instruction hints |
 | **Risk Flags** | Manifest-level declarations of what risks a provider's devices pose to users — severity-rated, surfaced in the UI as informed disclosure |
@@ -1959,9 +2022,13 @@ Each is a separate plugin repo with its own manifest, capabilities declaration, 
 | **Picture-in-Picture (PiP)** | Mobile layout pattern: floating overlay for passive widgets (Webcam, Video) while primary widget has full interaction |
 | **Acceptance Gate** | Required config flag (`accept_terms: true`) that prevents PlayRooms from starting until the admin explicitly accepts the Terms of Use |
 | **First-Boot Disclaimer** | Full-screen Terms of Use presented on first admin UI load — requires scroll + checkbox + confirm before proceeding |
-| **Guest Lobby Consent** | Activity consent screen shown to every guest before entering a room — always on, not configurable, does not expose platform details |
+| **Guest Lobby Consent** | Activity consent screen shown to every guest before entering a room — always on, not configurable, does not expose platform details. Served by the Portal as part of the guest client. |
 | **i18n** | Internationalization — all user-facing strings go through `react-i18next` `t()` function. English only for v1.0, architecture supports adding languages without code changes |
-| **Portal** | Cloud-hosted relay server for guest connections without port forwarding |
+| **Portal** | Guest front door — serves guest web client (pulled from Host), relays traffic to Host, bundles TURN server. Required for any guest access (local or remote). Optional expansion — solo play doesn't need it. |
+| **Solo Play** | Using PlayRooms with the Host addon only, no Portal, no guests. The admin dashboard is the full control surface. Guest-related features are greyed out with "Requires Portal" tooltip. |
+| **Client API Version** | Version constant tracking the guest-client ↔ Host Socket.IO event contract. Separate from the relay protocol version. Checked on guest connection to catch Host/Portal version mismatches. |
+| **Portal Handshake** | Initial exchange when Host connects to Portal — includes relay protocol version, Portal public URL, client API version, and guest client bundle. Establishes the relay channel. |
+| **TURN Server** | Bundled in the Portal (coturn). Enables WebRTC media (Voice, Video, Webcam) to traverse NATs for remote guests. |
 
 ## Appendix B: Related Documents
 
@@ -2000,7 +2067,23 @@ Ideas that surfaced during v1.0 design but are not planned for any specific vers
 - Configurable moderation escalation paths (warn → mute → freeze → kick)
 - Moderation action templates ("The usual" = mute voice 5 min + freeze controls 5 min)
 
+**Portal & Guest Access:**
+- Multi-Portal support: Host connects to multiple Portals simultaneously, share links target a specific Portal
+- Portal-side token validation cache (60-second TTL) for improved reconnection latency on high-latency links
+- Portal as SFU (Selective Forwarding Unit) for Webcam — Host sends one stream, Portal distributes to N guests, removing per-guest upload burden from the Host browser
+- Webcam sources beyond browser WebRTC: HA camera entity integration, RTSP/MJPEG/HLS URL ingestion with server-side transcoding on the Host
+
 **Infrastructure:**
 - Transport toggle configuration for Buttplug provider (enable/disable BLE, Serial, HID per host)
 - HA Voice devices as Bluetooth proxies via ESP32-S3 hardware for room-level coverage
 - Webhook expansion with provider-specific event detail
+
+### Known Limitations (v1.0)
+
+These are intentional scope boundaries, not bugs. Documented here for user awareness and future planning.
+
+- **Voice and Video require HTTPS**: Browsers require a secure context for `getUserMedia`. Local Portal deployments on plain HTTP support device control and Chat only. Remote Portal deployments should use HTTPS. Users can work around this on LAN with Cloudflare tunnels, reverse proxies with SSL, or self-signed certificates.
+- **Webcam is browser-sourced only**: The admin dashboard must be open for the Webcam feed to be active. HA camera entities and raw stream URLs are not supported in v1.0.
+- **Single Portal connection**: Users choose either a local Portal (HA addon) or a cloud Portal (Docker), not both simultaneously. The internal architecture supports multiple Portals for future expansion.
+- **Webcam scalability**: WebRTC peer connections scale linearly — one upload stream per guest viewer. Practical limit is 3-5 simultaneous Webcam viewers depending on host hardware and upload bandwidth.
+- **Portal requires Host connection**: The Portal pulls its guest client bundle from the Host during handshake. If the Host is unreachable, the Portal cannot serve guests.

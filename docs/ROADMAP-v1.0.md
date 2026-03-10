@@ -1,7 +1,7 @@
 # PlayRooms v1.0 — Implementation Roadmap
 
 **Status:** Draft  
-**Date:** 2026-02-28  
+**Date:** 2026-03-09 (revised from 2026-02-28)  
 **Reference:** `ARCHITECTURE-v1.0.md`  
 **Preceding version:** HAButtPlugIO-PlayRooms v3.3.0 (QA passed, ready for merge)
 
@@ -28,25 +28,33 @@ Before v1.0 work begins, finalize the 3.x series:
 - Initialize repo with Apache 2.0 license, README, CONTRIBUTING, SECURITY, NOTICE, CLAUDE.md
 - Port the following from HAButtPlugIO-PlayRooms verbatim (no refactoring yet):
   - `server/src/` (everything except `buttplug/` directory and portal server mode)
-  - `client/src/`
+  - `client/src/` (admin dashboard and host-side UI only — guest client will be served by Portal)
   - `Dockerfile`, `build.yaml`, `config.yaml`, `run.sh`
   - `docs/` (include ARCHITECTURE-v1.0.md and ROADMAP-v1.0.md)
   - `translations/`
 - Remove `PORTAL_MODE` toggle — Host is always the host
+- Remove any guest-facing port or guest UI serving — the Host serves only the admin dashboard
 - Keep the outbound relay client (Host's connection to Portal)
-- Create shared relay types file at `src/shared/relay-types.ts` with `RELAY_PROTOCOL_VERSION`
+- Create shared relay types file at `src/shared/relay-types.ts` with `RELAY_PROTOCOL_VERSION` and `CLIENT_API_VERSION`
 - Add placeholder `providers/` directory in server with a `loader.ts` stub
 - Add placeholder plugin config section in `config.yaml`
 - The `server/src/buttplug/` directory stays temporarily as a shim so the app still works during transition
+- Admin dashboard ToyBox must be fully interactive (not just monitoring) — this is the solo play control surface
+- Guest-related UI elements (share links, in-room QR, guest moderation) render as greyed out with "Requires Portal" tooltip when no Portal is connected
 
 **1.2 — Create `PlayRooms-Portal` repository**
 - Initialize repo with Apache 2.0 license, README, CLAUDE.md
 - Extract portal server code from HAButtPlugIO-PlayRooms (the `PORTAL_MODE=true` path)
 - Copy `src/shared/relay-types.ts` from Host repo (clearly marked as a copy)
 - Own Dockerfile — lightweight Node image, no Intiface Engine, no SQLite
+- Bundle TURN server (coturn) for WebRTC NAT traversal — configure via Portal config, expose TURN credentials to Host during handshake
+- Guest client serving: receive compiled guest client bundle from Host during relay handshake, serve as static files to guests
+- HTTP proxy for `/pair/*` routes: forward in-room pairing requests to Host and return responses transparently
+- Portal handshake implementation: send `portalPublicUrl` to Host, receive `CLIENT_API_VERSION` and guest client bundle
 - HA addon configuration files (config.yaml, build.yaml) for sister addon deployment
 - Standalone Docker deployment docs (docker-compose.yml for VPS/cloud)
 - Protocol version handshake validation on relay connection
+- Document known limitation: Voice/Video require HTTPS; plain HTTP LAN deployment supports device control and Chat only
 
 **1.3 — Create `PlayRooms-DP-Buttplug` repository**
 - Initialize repo with Apache 2.0 license, README stub, CLAUDE.md
@@ -68,13 +76,18 @@ Before v1.0 work begins, finalize the 3.x series:
 
 ### Done Looks Like
 - Five repos exist with proper structure and CLAUDE.md files
-- PlayRooms Host repo runs the existing app (no regressions from 3.3.0) without portal toggle
-- PlayRooms-Portal repo runs as a standalone relay server
+- PlayRooms Host repo runs the existing app (no regressions from 3.3.0) without portal toggle and without guest-facing port
+- Admin dashboard ToyBox is fully interactive — host can control devices directly (solo play works)
+- Guest-related UI is greyed out with "Requires Portal" tooltip when no Portal connected
+- PlayRooms-Portal repo runs as a standalone relay server, serves guest web client (pulled from Host), and bundles TURN server
 - Host can connect outbound to Portal; Portal validates and relays guest connections
+- Portal passes its public URL to Host during handshake; Host stores it for share link generation
+- Portal proxies `/pair/*` routes to Host transparently
 - Each provider repo has all required files (manifest, README, SAFETY, CONTROLS)
 - Buttplug provider repo contains the extracted Buttplug code
 - DG-LAB repos have well-written safety docs and meaningful stubs
 - Relay protocol version check works in the handshake
+- Client API version constant exists in shared types
 
 ---
 
@@ -149,21 +162,24 @@ Before v1.0 work begins, finalize the 3.x series:
 - Store acknowledgments in the database (provider name + flag hash → acknowledged timestamp)
 
 **2.7 — In-room access pairing**
-- PlayRooms exposes a direct port (e.g., 3000) separate from HA Ingress for guest and in-room connections
-- Admin dashboard: "Show In-Room QR" button in room header, generates pairing URL (`/pair/room-{id}`)
-- Pairing endpoint: on unknown device, generate 4-digit code (60s TTL, one-use, rate-limited 3 attempts/min)
-- Code challenge flow: display code on admin dashboard + phone, phone submits code, Host validates
-- On match: issue signed JWT (room ID, Moderator role, `present: true`, session-scoped expiry)
-- Reconnection: phone presents stored token, Host validates signature and expiry, reconnects silently
+- In-room pairing requires a Portal — if no Portal is connected, "Show In-Room QR" button is disabled with "Requires Portal" message
+- Admin dashboard: "Show In-Room QR" button in room header, generates pairing URL pointing to the Portal (`/pair/room-{id}` on Portal's public URL received during handshake)
+- Portal proxies `/pair/*` HTTP requests to the Host transparently
+- Pairing endpoint (on Host): on unknown device, generate 4-digit code (60s TTL, one-use, rate-limited 3 attempts/min)
+- Code challenge flow: display code on admin dashboard + phone (via Portal), phone submits code through Portal to Host, Host validates
+- On match: issue signed JWT (room ID, Moderator role, `present: true`, session-scoped expiry), relayed back through Portal
+- Reconnection: phone presents stored token via Portal, Portal forwards to Host for validation, reconnects silently
 - Admin controls: status indicator (connected/not connected), revoke access button, regenerate QR button
 - Token invalidation: admin revoke, QR regeneration, or room session end all kill active in-room tokens
 
 **2.8 — External emergency stop triggers**
 - Register `playrooms.emergency_stop` as an HA service at addon startup (HA mode only)
 - Implement `POST /api/emergency-stop` REST endpoint with admin-token auth (standalone mode, also available in HA mode)
-- Both paths call the same internal `stopAll()` as the UI button
-- Log the trigger source (HA service / REST API / UI button / Socket.IO) in the activity feed
+- Admin UI stop button is direct (no Portal dependency) — calls stopAll() locally
+- Guest stop commands route through the Portal relay — dependent on Portal connectivity
+- Log the trigger source (HA service / REST API / admin UI / guest via Portal) in the activity feed
 - Publish a companion HA Blueprint YAML for voice safeword and physical button automations (separate file in `blueprints/` directory)
+- Document: standalone Docker users have limited safety options (admin UI and REST API only — no voice safeword, no physical buttons)
 
 **2.9 — Command coordination (server-side)**
 - Per-guest throttle in CommandRouter: configurable max commands/sec per guest per device (default 10)
@@ -186,26 +202,35 @@ Before v1.0 work begins, finalize the 3.x series:
 - Activity feed logging for all moderation actions (action taken, target guest, duration, auto-restore events)
 - Room-level default durations: configurable defaults for each moderation action type
 
+**2.11 — Client API version handshake**
+- When a guest connects via the Portal relay, the client sends `CLIENT_API_VERSION` in the Socket.IO handshake
+- Host compares against its expected version
+- If incompatible, Host rejects with a clear message: "Guest client outdated — please ask the host to update their Portal deployment"
+- This catches the scenario where the Host is upgraded but the Portal hasn't yet pulled the updated client bundle
+- Separate from the relay protocol version (which covers Host ↔ Portal, not client ↔ Host)
+
 ### Done Looks Like
 - TypeScript types for the full plugin system are defined and importable
 - The server starts up, reads plugin config, loads the Buttplug provider through the new loader
 - Commands flow through the router and cascade, reaching the same Buttplug code as before
 - Share links can be created with different roles (viewer, social, participant, moderator)
+- Share link URLs point to the Portal's public URL (received during handshake)
 - A viewer guest can observe but not interact; a social guest can chat but not control devices
 - Enabling a provider with risk flags shows a disclosure screen; the host acknowledges and proceeds
 - Risk badges appear next to flagged devices in room configuration
-- PlayRooms is accessible on its direct port without HA Ingress auth
-- Admin can display a QR code, in-room person scans it, completes code challenge, gets Moderator access with quick-action UI
-- In-room person's phone reconnects silently after screen lock without re-pairing
+- Admin can display a QR code (pointing to Portal), in-room person scans it, completes code challenge (relayed through Portal), gets Moderator access with quick-action UI
+- In-room person's phone reconnects silently after screen lock without re-pairing (token validated via Portal → Host)
 - Admin can revoke in-room access and regenerate the QR code
+- "Show In-Room QR" is disabled when no Portal is connected
 - An HA automation calling `playrooms.emergency_stop` triggers stopAll() on all active devices
 - The REST endpoint `/api/emergency-stop` works with admin auth in standalone mode
-- Activity feed shows which trigger source fired the stop
+- Activity feed shows which trigger source fired the stop (admin UI / guest via Portal / HA service / REST API)
 - Per-guest command throttle prevents flooding — commands beyond the limit are dropped
 - Control cooldown prevents slider tug-of-war — a guest who changes a control locks it briefly for others
 - Moderator can freeze a guest's controls, mute voice/chat, disable video — all with timed auto-restore
 - Frozen guest sees locked indicators with countdown; controls unlock but stay off on expiry
 - Moderator can kick or ban a guest from the context menu
+- Guest client API version is checked on connection — mismatched versions are rejected with a clear message
 - All 3.3.0 functionality still works for participant-role guests — this is a transparent abstraction layer
 - A second (stub) provider could be enabled in config and would load without crashing
 
@@ -294,6 +319,8 @@ Before v1.0 work begins, finalize the 3.x series:
 - Widget switcher: bottom tab bar or drawer for widgets not visible as primary or overlay
 - Desktop (1024px+): flexible grid with multiple widgets side-by-side, collapsible to header bars
 - Collapsed headers show minimal status (unread count, active device count)
+- Solo play mode: when no Portal is connected, communication widgets (Chat, Voice, Video) are hidden entirely — layout focuses on ToyBox and Webcam
+- Portal connection status indicator: prominent in the admin dashboard header, shows connected/disconnected
 - State persistence: layout preference stored per-session, survives reconnect
 - Responsive breakpoints: 375px (mobile PiP), 768px (tablet), 1024px+ (desktop grid)
 
@@ -304,8 +331,9 @@ Before v1.0 work begins, finalize the 3.x series:
 - A DG-LAB Coyote shows ramp sliders with smooth transitions and device-side feedback indicators
 - A stroker (The Handy) shows position + duration compound control
 - Different roles see different panel views: host gets full control + monitoring, moderator gets controls + emergency stop, participant gets interactive controls, social sees read-only state, viewer sees minimal state
+- Host admin dashboard ToyBox is fully interactive — solo play works without a Portal
 - Emergency stop works globally and per-device
-- Host can see live activity for all devices in their room
+- Host can see live activity for all devices in their room, including Portal connection status
 - Share link role determines which panel view a guest gets
 - Every control shows ring color + icon badge reflecting its state (available, active, cooldown, locked, disabled)
 - Tapping a state indicator shows a popover explaining why (cooldown timer, who's controlling, role restriction)
@@ -315,6 +343,7 @@ Before v1.0 work begins, finalize the 3.x series:
 - Moderated guests see locked indicators with countdown; controls/mic/camera re-enable manually after expiry
 - Mobile layout shows primary widget + PiP overlay; desktop shows flexible grid
 - Guest can drag PiP overlay to any corner, expand/collapse, switch primary widget
+- Solo play mode: communication widgets hidden when no Portal connected; ToyBox and Webcam fill the layout
 
 ---
 
